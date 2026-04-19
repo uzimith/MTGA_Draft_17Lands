@@ -425,21 +425,32 @@ class CardToolTip(tkinter.Toplevel):
             ww = self.winfo_width()
             wh = self.winfo_height()
 
-            sw = self.winfo_screenwidth()
-            sh = self.winfo_screenheight()
+            # Use the virtual screen bounds so the tooltip lands on whichever
+            # monitor the cursor is on. winfo_screenwidth/height only covers
+            # the primary monitor, which clamps the popup off secondary
+            # displays that sit at negative virtual coordinates.
+            vx = self.winfo_vrootx()
+            vy = self.winfo_vrooty()
+            vw = self.winfo_vrootwidth() or self.winfo_screenwidth()
+            vh = self.winfo_vrootheight() or self.winfo_screenheight()
+            right = vx + vw
+            bottom = vy + vh
 
             # Offset aggressively to prevent cursor hovering over the tooltip immediately, causing a rapid <Leave> flicker
             offset_x, offset_y = 35, 25
 
-            if self._mouse_x + offset_x + ww > sw:
-                tx = max(self._mouse_x - offset_x - ww - 10, 0)
+            if self._mouse_x + offset_x + ww > right:
+                tx = self._mouse_x - offset_x - ww - 10
             else:
-                tx = max(self._mouse_x + offset_x, 0)
+                tx = self._mouse_x + offset_x
 
-            if self._mouse_y + offset_y + wh > sh:
-                ty = max(self._mouse_y - offset_y - wh - 10, 0)
+            if self._mouse_y + offset_y + wh > bottom:
+                ty = self._mouse_y - offset_y - wh - 10
             else:
-                ty = max(self._mouse_y + offset_y, 0)
+                ty = self._mouse_y + offset_y
+
+            tx = max(tx, vx)
+            ty = max(ty, vy)
 
             self.geometry(f"+{tx}+{ty}")
         except tkinter.TclError:
