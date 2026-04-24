@@ -330,6 +330,7 @@ LOCAL_DATA_FILE_PREFIX_CARDS = "Raw_cards_"
 LOCAL_DATA_FILE_PREFIX_DATABASE = "Raw_CardDatabase_"
 
 LOCAL_DATABASE_TABLE_LOCALIZATION = "Localizations_enUS"
+LOCAL_DATABASE_TABLE_LOCALIZATION_JA = "Localizations_jaJP"
 LOCAL_DATABASE_TABLE_ENUMERATOR = "Enums"
 LOCAL_DATABASE_TABLE_CARDS = "Cards"
 
@@ -345,16 +346,29 @@ LOCAL_DATABASE_ENUMERATOR_TYPE_COLOR = "Color"
 LOCAL_DATABASE_ENUMERATOR_TYPE_CARD_TYPES = "CardType"
 
 LOCAL_DATABASE_LOCALIZATION_QUERY = f"""SELECT
-                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID}, 
-                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT}, 
+                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID},
+                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT},
                                             A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_TEXT}
                                         FROM {LOCAL_DATABASE_TABLE_LOCALIZATION} A INNER JOIN(
-                                            SELECT 
+                                            SELECT
                                                 {LOCAL_DATABASE_LOCALIZATION_COLUMN_ID},
-                                                min({LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT}) AS MIN_FORMAT 
-                                            FROM {LOCAL_DATABASE_TABLE_LOCALIZATION} 
-                                            GROUP BY {LOCAL_DATABASE_LOCALIZATION_COLUMN_ID}) 
-                                        B ON A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID} = B.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID} 
+                                                min({LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT}) AS MIN_FORMAT
+                                            FROM {LOCAL_DATABASE_TABLE_LOCALIZATION}
+                                            GROUP BY {LOCAL_DATABASE_LOCALIZATION_COLUMN_ID})
+                                        B ON A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID} = B.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID}
+                                        AND A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT} = B.MIN_FORMAT"""
+
+LOCAL_DATABASE_LOCALIZATION_QUERY_JA = f"""SELECT
+                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID},
+                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT},
+                                            A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_TEXT}
+                                        FROM {LOCAL_DATABASE_TABLE_LOCALIZATION_JA} A INNER JOIN(
+                                            SELECT
+                                                {LOCAL_DATABASE_LOCALIZATION_COLUMN_ID},
+                                                min({LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT}) AS MIN_FORMAT
+                                            FROM {LOCAL_DATABASE_TABLE_LOCALIZATION_JA}
+                                            GROUP BY {LOCAL_DATABASE_LOCALIZATION_COLUMN_ID})
+                                        B ON A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID} = B.{LOCAL_DATABASE_LOCALIZATION_COLUMN_ID}
                                         AND A.{LOCAL_DATABASE_LOCALIZATION_COLUMN_FORMAT} = B.MIN_FORMAT"""
 
 LOCAL_DATABASE_ENUMERATOR_QUERY = f"""SELECT

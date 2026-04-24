@@ -396,6 +396,10 @@ class FileExtractor(UIProgress):
 
         tag_errors = self._inject_community_tags(update_ui)
 
+        # 3b. Localize card names for display (English has been retained as
+        # ``name_en`` for any downstream lookup keyed by the 17Lands name).
+        self._apply_japanese_names()
+
         # 4. Export
         filename = self.export_card_data()
 
@@ -549,6 +553,9 @@ class FileExtractor(UIProgress):
                 self._update_status("Building Data Set File")
                 self._assemble_set(matching_only)
                 check_set_data(self.combined_data["card_ratings"], self.card_ratings)
+                # Swap display names to Japanese after all English-name matching
+                # (17Lands ratings + check_set_data) has completed.
+                self._apply_japanese_names()
                 break
 
         except Exception as error:
@@ -666,16 +673,20 @@ class FileExtractor(UIProgress):
                         arena_database_locations[0],
                     )
                     self._update_status("Retrieving Localization Data")
-                    result, card_text, card_enumerators, raw_card_data = (
-                        self._retrieve_local_database(arena_database_locations[0])
-                    )
+                    (
+                        result,
+                        card_text,
+                        card_text_ja,
+                        card_enumerators,
+                        raw_card_data,
+                    ) = self._retrieve_local_database(arena_database_locations[0])
 
                     if not result:
                         break
 
                     self._update_status("Building Temporary Card Data File")
                     result = self._assemble_stored_data(
-                        card_text, card_enumerators, raw_card_data
+                        card_text, card_enumerators, raw_card_data, card_text_ja
                     )
 
                     if not result:
@@ -895,6 +906,7 @@ class FileExtractor(UIProgress):
         """Retrieves localization and enumeration data from an Arena database"""
         result = False
         card_text = {}
+        card_text_ja = {}
         card_enumerators = {}
         card_data = {}
         try:
@@ -918,6 +930,26 @@ class FileExtractor(UIProgress):
 
                 if not result:
                     break
+
+                # Japanese localization is optional – if the Arena client has not
+                # downloaded it (or the table is absent), we fall back to English.
+                try:
+                    ja_rows = [
+                        dict(row)
+                        for row in cursor.execute(
+                            constants.LOCAL_DATABASE_LOCALIZATION_QUERY_JA
+                        )
+                    ]
+                    if ja_rows:
+                        _ok, card_text_ja = self._retrieve_local_card_text(ja_rows)
+                        if not _ok:
+                            card_text_ja = {}
+                except sqlite3.OperationalError as ja_err:
+                    logger.warning(
+                        f"Japanese localization table unavailable: {ja_err}. "
+                        "Card names will stay in English."
+                    )
+                    card_text_ja = {}
 
                 rows = [
                     dict(row)
@@ -946,7 +978,7 @@ class FileExtractor(UIProgress):
             result = False
             logger.error(error)
 
-        return result, card_text, card_enumerators, card_data
+        return result, card_text, card_text_ja, card_enumerators, card_data
 
     def _retrieve_local_card_text(self, data):
         """Returns a dict containing localization data"""
@@ -994,23 +1026,45 @@ class FileExtractor(UIProgress):
 
         return result, card_enumerators
 
-    def _assemble_stored_data(self, card_text, card_enumerators, card_data):
-        """Creates a temporary card data file from data collected from local Arena files"""
+    def _assemble_stored_data(
+        self, card_text, card_enumerators, card_data, card_text_ja=None
+    ):
+        """Creates a temporary card data file from data collected from local Arena files.
+
+        The English name stays in ``constants.DATA_FIELD_NAME`` so that all downstream
+        matching against 17Lands / Scryfall keeps working. When a Japanese
+        localization table is available, the translated name is stashed under
+        ``name_ja`` and later swapped into ``name`` for UI display.
+        """
+        card_text_ja = card_text_ja or {}
         result = False
         try:
             for card_set in card_data:
                 for card in card_data[card_set]:
                     try:
+                        title_ids = card_data[card_set][card][
+                            constants.DATA_FIELD_NAME
+                        ]
+
                         # 1. MAP NAMES (Converts the ID list into a readable string)
                         card_data[card_set][card][constants.DATA_FIELD_NAME] = (
                             " // ".join(
                                 card_text[x]
-                                for x in card_data[card_set][card][
-                                    constants.DATA_FIELD_NAME
-                                ]
+                                for x in title_ids
                                 if x in card_text
                             )
                         )
+
+                        # 1b. MAP JAPANESE NAME (fallback to English face if a
+                        # particular face is not translated).
+                        if card_text_ja:
+                            ja_name = " // ".join(
+                                card_text_ja.get(x, card_text.get(x, ""))
+                                for x in title_ids
+                                if x in card_text_ja or x in card_text
+                            ).strip()
+                            if ja_name:
+                                card_data[card_set][card]["name_ja"] = ja_name
 
                         # 2. MAP CARD TYPES
                         mapped_types = []
@@ -1171,6 +1225,26 @@ class FileExtractor(UIProgress):
                 time.sleep(constants.CARD_RATINGS_INTER_DELAY_SECONDS)
 
         return result
+
+    def _apply_japanese_names(self):
+        """Replace each card's English display name with the Japanese printed
+        name once all external matching (17Lands, Scryfall tags, log scanner)
+        has completed. The original English string is preserved as ``name_en``
+        so that any late-binding lookups can still resolve it.
+        """
+        card_ratings = self.combined_data.get("card_ratings") or {}
+        swapped = 0
+        for card in card_ratings.values():
+            ja = card.pop("name_ja", None)
+            if not ja:
+                continue
+            en = card.get(constants.DATA_FIELD_NAME)
+            if en:
+                card["name_en"] = en
+            card[constants.DATA_FIELD_NAME] = ja
+            swapped += 1
+        if swapped:
+            logger.info(f"Applied Japanese card names to {swapped} card(s).")
 
     def _inject_community_tags(self, progress_callback=None):
         """Fetches Scryfall otags and injects them into the card dictionary."""
